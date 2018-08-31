@@ -34,8 +34,8 @@ class App extends Component {
   render() {
     return (
       <div id="gameoflife-scene" ref={s => (this.scene = s)}>
-        <Controller />
         <LifeGrid />
+        <Controller />
       </div>
     );
   }

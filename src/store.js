@@ -9,4 +9,6 @@ const store = createStore(
 
 export const dispatch = store.dispatch;
 
+export const subscribe = store.subscribe;
+
 export default store;

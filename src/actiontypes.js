@@ -6,8 +6,7 @@ export const TOGGLE_ERASE_MODE = "TOGGLE_ERASE_MODE";
 export const CHANGE_SHAPE = "CHANGE_SHAPE";
 export const CHANGE_SIZE = "CHANGE_SIZE";
 
-export const PLAY = "PLAY";
-export const PAUSE = "PAUSE";
+export const TOGGLE_PLAY = "TOGGLE_PLAY";
 export const CHANGE_SPEED = "CHANGE_SPEED";
 
 export const SET_START_COLOR = "SET_START_COLOR";

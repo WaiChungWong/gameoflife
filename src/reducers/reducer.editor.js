@@ -4,10 +4,10 @@ import {
   CHANGE_SHAPE,
   CHANGE_SIZE
 } from "../actiontypes";
-import { SQUARE } from "../shapes";
+import { SQUARE } from "../utils";
 
 export default (
-  state = { drawMode: false, eraseMode: false, shape: SQUARE, size: 3 },
+  state = { drawMode: false, eraseMode: false, shape: SQUARE, size: 5 },
   action
 ) => {
   let { drawMode, eraseMode, shape, size } = state;

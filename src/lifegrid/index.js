@@ -2,69 +2,113 @@ import React, { Component } from "react";
 import PropTypes from "prop-types";
 import { connect } from "react-redux";
 
+import Mouse from "jw-mouse";
 import Animator from "jw-animator";
 import AnimateCanvas from "jw-animate-canvas";
 
+import { iterateShape } from "../utils";
+
 import "./style.css";
+
+const { min, max, floor, round } = Math;
 
 class LifeGrid extends Component {
   constructor(props) {
     super(props);
 
-    this.state = {
-      lifeGrid: []
-    };
-
-    this.animate = this.animate.bind(this);
+    this.shadowCells = [];
+    this.lifeGrid = [];
     this.timeBuffer = 0;
+
+    this.mouseEvent = this.mouseEvent.bind(this);
+    this.animate = this.animate.bind(this);
+
+    this.mouse = new Mouse();
+    this.mouse.onEnter(this.mouseEvent);
+    this.mouse.onLeave(this.mouseEvent);
+    this.mouse.onMove(this.mouseEvent);
+    this.mouse.onDown(this.mouseEvent);
+    this.mouse.onUp(this.mouseEvent);
+  }
+
+  mouseEvent({ mouse }) {
+    const { gridElement } = this;
+    const { grid, editor } = this.props;
+    const { rows, columns } = grid;
+    const { width, height } = gridElement.canvas;
+    const { drawMode, eraseMode, shape, size } = editor;
+    const { isLeftButton, isMouseDown, position } = mouse;
+
+    this.shadowCells = [];
+
+    if (position && position.x && position.y) {
+      let pointX = floor((position.x / width) * columns);
+      let pointY = floor((position.y / height) * rows);
+
+      if (isLeftButton && isMouseDown) {
+        iterateShape(shape, size, pointX, pointY, rows, columns, (y, x) => {
+          if (drawMode) {
+            this.lifeGrid[y][x] = 1;
+          } else if (eraseMode) {
+            this.lifeGrid[y][x] = 0;
+          }
+        });
+      }
+
+      if (drawMode || eraseMode) {
+        iterateShape(shape, size, pointX, pointY, rows, columns, (y, x) => {
+          this.shadowCells.push({ y, x });
+        });
+      }
+    }
   }
 
   componentDidMount() {
     const { animator } = this.props;
 
     animator.add(timeDiff => this.update(timeDiff));
+
+    this.reset();
+    this.mouse.attach(this.gridElement.canvas);
+    animator.start();
+  }
+
+  componentWillUnmount() {
+    this.mouse.detach(this.gridElement.canvas);
+    this.props.animator.stop();
   }
 
   reset() {
     const { grid } = this.props;
     const { rows, columns } = grid;
 
-    let lifeGrid = [];
+    this.lifeGrid = [];
 
     for (let y = 0; y < rows; y++) {
-      lifeGrid[y] = [];
+      this.lifeGrid[y] = [];
 
       for (let x = 0; x < columns; x++) {
-        lifeGrid[y][x] = 0;
+        this.lifeGrid[y][x] = 0;
       }
     }
-
-    this.setState({ lifeGrid });
   }
 
-  getCellAge(y, x, lifeGrid) {
-    const { cell, grid } = this.props;
+  getUpdatedCellAge(y, x) {
+    const { grid, cell } = this.props;
     const { rows, columns } = grid;
-    const { lifespan } = cell;
+    const { lifeGrid } = this;
+    const { lifespan, infiniteLife } = cell;
 
-    let cellAge = grid[y][x];
+    let cellAge = (lifeGrid[y] && lifeGrid[y][x]) || 0;
 
-    if (lifespan > 0 && cellAge >= lifespan) {
-      return 0;
+    if (lifespan > 0 && !infiniteLife && cellAge >= lifespan) {
+      cellAge = 0;
     } else {
       let numOfLiveNeighbours = 0;
 
-      for (
-        let sideY = Math.max(0, y - 1);
-        sideY <= y + 1 && sideY < rows;
-        sideY++
-      ) {
-        for (
-          let sideX = Math.max(0, x - 1);
-          sideX <= x + 1 && sideX < columns;
-          sideX++
-        ) {
-          if ((sideY !== y || sideX !== x) && lifeGrid[sideY][sideX] > 0) {
+      for (let sY = max(0, y - 1); sY <= min(y + 1, rows - 1); sY++) {
+        for (let sX = max(0, x - 1); sX <= min(x + 1, columns - 1); sX++) {
+          if ((sY !== y || sX !== x) && lifeGrid[sY] && lifeGrid[sY][sX] > 0) {
             numOfLiveNeighbours++;
           }
         }
@@ -87,27 +131,86 @@ class LifeGrid extends Component {
   updateGrid() {
     const { grid } = this.props;
     const { rows, columns } = grid;
-    const { lifeGrid } = this.state;
 
-    let prevGrid = JSON.parse(JSON.stringify(lifeGrid));
+    let newGrid = [];
 
     for (let y = 0; y < rows; y++) {
+      newGrid[y] = [];
+
       for (let x = 0; x < columns; x++) {
-        lifeGrid[y][x] = this.getCellAge(y, x, prevGrid);
+        newGrid[y][x] = this.getUpdatedCellAge(y, x);
+      }
+    }
+
+    this.lifeGrid = newGrid;
+  }
+
+  update(timeDiff) {
+    const { iterator } = this.props;
+    const { isPlaying, fps } = iterator;
+
+    if (isPlaying) {
+      let timeInterval = 1 / fps;
+
+      this.timeBuffer += timeDiff;
+
+      if (timeInterval > 0 && this.timeBuffer >= timeInterval) {
+        this.timeBuffer -= timeInterval;
+
+        this.updateGrid();
       }
     }
   }
 
-  update(timeDiff) {
-    const { animator } = this.props;
-    const { fps } = animator;
+  drawShadowCells(context, cellWidth, cellHeight) {
+    context.fillStyle = "rgba(125, 125, 125, 0.5)";
 
-    let timeInterval = 1 / fps;
+    let { shadowCells } = this;
 
-    this.timeBuffer += timeDiff;
+    for (let i = 0; i < shadowCells.length; i++) {
+      let x = shadowCells[i].x;
+      let y = shadowCells[i].y;
 
-    while (timeInterval > 0 && this.timeBuffer >= timeInterval) {
-      this.timeBuffer -= timeInterval;
+      context.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+    }
+  }
+
+  drawLiveCell(age, y, x, context, cellWidth, cellHeight) {
+    const { cell } = this.props;
+    const { startColor, endColor, infiniteLife, lifespan } = cell;
+    const { r: startR, g: startG, b: startB, a: startA } = startColor;
+    const { r: endR, g: endG, b: endB, a: endA } = endColor;
+
+    if (age > 0) {
+      let r = startR;
+      let g = startG;
+      let b = startB;
+      let a = startA;
+
+      if (lifespan > 0 && !infiniteLife) {
+        let delta = age / lifespan;
+
+        r += round((endR - startR) * delta);
+        g += round((endG - startG) * delta);
+        b += round((endB - startB) * delta);
+        a += round((endA - startA) * delta);
+      }
+
+      context.fillStyle = `rgba(${r}, ${g}, ${b}, ${a})`;
+      context.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+    }
+  }
+
+  drawLiveCells(context, cellWidth, cellHeight) {
+    const { grid } = this.props;
+    const { rows, columns } = grid;
+    const { lifeGrid } = this;
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < columns; x++) {
+        let age = (lifeGrid[y] && lifeGrid[y][x]) || 0;
+        this.drawLiveCell(age, y, x, context, cellWidth, cellHeight);
+      }
     }
   }
 
@@ -120,43 +223,30 @@ class LifeGrid extends Component {
     let cellWidth = width / columns;
     let cellHeight = height / rows;
 
-    //// TODO:
-    // lifeGrid.drawShadowCells(context, cellWidth, cellHeight);
-    //
-    // for (var y = 0; y < lifeGrid.rows; y++) {
-    //   for (var x = 0; x < lifeGrid.columns; x++) {
-    //     lifeGrid.drawCell(
-    //       lifeGrid.getCell(y, x),
-    //       y,
-    //       x,
-    //       context,
-    //       cellWidth,
-    //       cellHeight
-    //     );
-    //   }
-    // }
+    this.drawShadowCells(context, cellWidth, cellHeight);
+    this.drawLiveCells(context, cellWidth, cellHeight);
   }
 
   render() {
     const { animator } = this.props;
 
     return (
-      <AnimateCanvas
-        ref={layer => (this.layer = layer)}
-        id="gameoflife-grid"
-        animator={animator}
-        animate={this.animate}
-      />
+      <div id="gameoflife-grid">
+        <AnimateCanvas
+          ref={g => (this.gridElement = g)}
+          animator={animator}
+          animate={this.animate}
+        />
+      </div>
     );
   }
 }
 
 LifeGrid.propTypes = {
   animator: PropTypes.instanceOf(Animator),
-  grid: PropTypes.shape({
-    rows: PropTypes.number,
-    columns: PropTypes.number
-  }),
+  iterator: PropTypes.shape(),
+  grid: PropTypes.shape(),
+  editor: PropTypes.shape(),
   cell: PropTypes.shape()
 };
 
@@ -164,6 +254,7 @@ LifeGrid.defaultProps = {
   animator: new Animator()
 };
 
-const mapStateToProps = state => state;
-
-export default connect(mapStateToProps)(LifeGrid);
+export default connect(
+  state => state,
+  () => ({})
+)(LifeGrid);

@@ -1,6 +1,6 @@
 import { SET_ROW, SET_COLUMN } from "../actiontypes";
 
-export default (state = { rows: 400, columns: 400 }, action) => {
+export default (state = { rows: 100, columns: 100 }, action) => {
   let { rows, columns } = state;
 
   switch (action.type) {
